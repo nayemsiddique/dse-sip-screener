@@ -24,6 +24,32 @@ MUTED_2 = "#787d87"
 MUTED_3 = "#5f636b"
 FAINT = "#4f535a"
 
+# The chart draws on a canvas, which cannot read the page's CSS variables and
+# cannot be trusted with `oklch()` across browsers, so the design file's chart
+# palette is carried here as sRGB. Each comment is the design's own value.
+CHART = {
+    "up": "#3fbf86",        # oklch(0.72 0.14 160)
+    "down": "#e55458",      # oklch(0.64 0.18 22)
+    "band": "#7190d6",      # oklch(0.66 0.11 265) — Bollinger upper/lower
+    "band_mid": "#af95df",  # oklch(0.72 0.11 300) — the dashed middle SMA
+    "band_fill": "#637fbc", # oklch(0.6 0.1 265) at 10%
+    "rsi": "#c494fa",       # oklch(0.75 0.15 305)
+    "rsi_guide": "#9e80d1", # oklch(0.66 0.12 300) at 50%
+    "rsi_zone": "#aa8dde",  # oklch(0.7 0.12 300) at 7%
+    "grid": "#1b1e23",      # price grid and pane baselines
+    "grid_time": "#17191e", # the fainter vertical time gridlines
+    "axis_text": "#6b6f78",
+    "legend_value": "#c2c7d0",
+    "crosshair": "#7c828c",
+    "crosshair_tag": "#3a3f47",
+    "sma": "#e1b75c",       # WARN in sRGB, for the moving average
+    "ema": "#6fd3e8",
+    "vwap": "#e8a0c8",
+    "drawing": "#9aa3b0",   # a drawing nobody has selected
+    "fib": ["#e55458", "#e08c4a", "#e1b75c", "#3fbf86", "#5fb8d8", "#7190d6", "#af95df"],
+    "panel": "#0d0f12",     # the chart panel's own background
+}
+
 SANS = "'IBM Plex Sans',system-ui,sans-serif"
 MONO = "'IBM Plex Mono',ui-monospace,monospace"
 
@@ -308,8 +334,10 @@ a:hover { color: oklch(0.9 0.11 190); text-decoration: underline; }
 .stTabs [data-testid="stTabPanel"] { padding-top: 22px; }
 
 /* ------------------------------------------------------- design fragments */
-/* The focus-clearing script rides in a component iframe with no visible output. */
-[data-testid="stIFrame"] { display: none; }
+/* The focus-clearing script rides in a component iframe with no visible output.
+   Scoped to that one container by key, so the price-chart component — also an
+   iframe — still renders. */
+.st-key-focus-script { display: none; }
 
 .sec-label {
   display: block;

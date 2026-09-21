@@ -3,3 +3,8 @@ __pycache__/
 .DS_Store
 .venv/
 venv/
+
+# TradingView's Charting Library is licensed to you, not redistributable, and
+# is downloaded from the private repo they grant access to. See README.
+static/charting_library/*
+!static/charting_library/README.md

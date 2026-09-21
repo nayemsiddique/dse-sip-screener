@@ -12,8 +12,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import dse
+import dse_history
 import dse_news
+import pricechart
 import theme
+import tvchart
 
 st.set_page_config(
     page_title="DSE Screener",
@@ -48,6 +51,11 @@ def load_company(symbol):
 @st.cache_data(ttl=21600)  # Quarterly disclosures change a few times a year
 def load_cashflow(symbol):
     return dse_news.fetch_cashflow(symbol)
+
+
+@st.cache_data(ttl=21600)  # Day-end bars are published once, after the close
+def load_history(symbol):
+    return dse_history.fetch_history(symbol)
 
 
 @st.cache_data(ttl=5, show_spinner=False)  # Polled live; see the fragment below
@@ -321,8 +329,8 @@ metric_strip(data)
 # -----------------------------------------------------------------------------
 # TABS
 # -----------------------------------------------------------------------------
-tab_check, tab_ratios, tab_raw = st.tabs(
-    ["Checklist & calculation", "Ratio benchmarks", "Scraped DSE data"]
+tab_check, tab_chart, tab_ratios, tab_raw = st.tabs(
+    ["Checklist & calculation", "Price chart", "Ratio benchmarks", "Scraped DSE data"]
 )
 
 with tab_check:
@@ -361,6 +369,26 @@ with tab_check:
         f"{rows}</div>",
         unsafe_allow_html=True,
     )
+
+with tab_chart:
+    bars, history_source, history_err = load_history(code)
+    if history_err:
+        st.markdown(
+            f'<div class="notice"><span>&#9651;</span><p>{esc(history_err)}</p></div>',
+            unsafe_allow_html=True,
+        )
+    elif tvchart.available():
+        # Optional: if someone has dropped a licensed TradingView Charting
+        # Library into static/, use it. Nothing here depends on that.
+        components.html(
+            tvchart.render(code, bars, data.get("name")), height=tvchart.HEIGHT
+        )
+    else:
+        # The component is an iframe with its own document, so it draws the
+        # panel chrome itself rather than inheriting the page's CSS.
+        components.html(
+            pricechart.render(code, bars, history_source), height=pricechart.HEIGHT
+        )
 
 with tab_ratios:
     roe, de, payout = verdict["roe"], verdict["debt_equity"], verdict["payout"]
@@ -404,8 +432,9 @@ with tab_raw:
 # again means deleting it first. Clear it on focus instead. Streamlit strips
 # <script> from st.markdown, so this rides in a zero-height component iframe and
 # reaches the app through window.parent (same origin).
-components.html(
-    """
+with st.container(key="focus-script"):
+    components.html(
+        """
 <script>
 (function () {
   const doc = window.parent.document;
@@ -438,5 +467,5 @@ components.html(
 })();
 </script>
 """,
-    height=0,
-)
+        height=0,
+    )

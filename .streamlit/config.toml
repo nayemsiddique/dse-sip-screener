@@ -8,3 +8,7 @@ font = "sans serif"
 
 [server]
 headless = true
+# Serves ./static/ at /app/static/. The TradingView Charting Library lives
+# there, so the chart component can load it from the same origin as the app —
+# no second port, which also keeps it working on a hosted single-port deploy.
+enableStaticServing = true
