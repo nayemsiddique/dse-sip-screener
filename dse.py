@@ -16,6 +16,9 @@ from bs4 import BeautifulSoup
 BASE = "https://www.dsebd.org"
 COMPANY_URL = BASE + "/displayCompany.php?name={symbol}"
 LISTING_URL = BASE + "/company_listing.php"
+# Plain-text feed of every instrument's last trade price: ~6 KB and ~0.1s,
+# against ~330 KB for a company page. This is what intraday polling hits.
+QUOTES_URL = BASE + "/datafile/quotes_script.php"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -203,6 +206,41 @@ def fetch_symbols():
         return [], "DSE returned no trading codes."
     except Exception as e:
         return [], f"Could not load the trading-code list: {e}"
+
+
+QUOTE_LINE = re.compile(r"^\s*([A-Z0-9()\-.]+)\s+([\d,]+\.?\d*)\s*$")
+QUOTE_STAMP = re.compile(r"Date:\s*([\d-]+)\s+Time:\s*([\d:]+)")
+
+
+def fetch_quotes():
+    """Last trade price for every instrument, from DSE's text quote feed.
+
+    Returns (prices, stamp, error). `stamp` is DSE's own "date time" header.
+    Instruments that have not traded come through as 0.0 and are dropped.
+    """
+    try:
+        response = requests.get(
+            QUOTES_URL, headers=HEADERS, timeout=10, verify=ca_bundle()
+        )
+        response.raise_for_status()
+    except Exception as e:
+        return {}, None, f"Quote feed unavailable: {e}"
+
+    text = response.text
+    prices = {}
+    for line in text.splitlines():
+        match = QUOTE_LINE.match(line.strip())
+        if not match:
+            continue
+        price = float(match.group(2).replace(",", ""))
+        if price > 0:
+            prices[match.group(1)] = price
+
+    stamp = QUOTE_STAMP.search(text)
+    stamp_text = " ".join(stamp.groups()) if stamp else None
+    if not prices:
+        return {}, stamp_text, "Quote feed returned no prices."
+    return prices, stamp_text, None
 
 
 def fetch_company(symbol):

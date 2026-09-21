@@ -25,6 +25,20 @@ streamlit run app.py
 | `symbol_names.json` | that cache, committed so a fresh deploy has names immediately |
 | `certs_dsebd_intermediate.pem` | TLS intermediate dsebd.org fails to send |
 
+## Live prices
+
+The price tile refreshes itself every 5 seconds via `st.fragment(run_every=5)`.
+It reads `datafile/quotes_script.php` — a ~6 KB plain-text feed of every
+instrument's last trade price, served in about 0.1s — rather than re-fetching
+the ~330 KB company page. The 5-second `st.cache_data` on that fetch is shared
+across viewers, so the app makes one small request per 5s regardless of how many
+people have it open.
+
+Everything else on the page is quarterly or annual data and stays on the
+30-minute company-page cache. Treasury bonds and untraded scrips are absent
+from the quote feed; those fall back to the company-page price and are labelled
+"page value".
+
 ## Two things worth knowing
 
 **The TLS certificate.** dsebd.org serves an incomplete chain: the leaf and the

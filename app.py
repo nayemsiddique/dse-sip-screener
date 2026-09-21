@@ -50,6 +50,11 @@ def load_cashflow(symbol):
     return dse_news.fetch_cashflow(symbol)
 
 
+@st.cache_data(ttl=5, show_spinner=False)  # Polled live; see the fragment below
+def load_quotes():
+    return dse.fetch_quotes()
+
+
 # -----------------------------------------------------------------------------
 # SMALL RENDER HELPERS
 # -----------------------------------------------------------------------------
@@ -258,28 +263,60 @@ with head_right:
 # -----------------------------------------------------------------------------
 # METRIC STRIP
 # -----------------------------------------------------------------------------
-change_pct = data.get("change_pct")
-if change_pct is None:
-    change_sub, change_color = "no change data", None
-else:
-    change_sub = f"{change_pct:+.2f}% today"
-    change_color = theme.ACCENT if change_pct > 0 else (theme.FAIL if change_pct < 0 else None)
+# The price tile refreshes on its own every 5s. It reads DSE's ~6 KB text quote
+# feed rather than the ~330 KB company page, and the cache is shared across
+# viewers, so the whole app costs one small request per 5s no matter how many
+# people have it open. Everything else on the page is quarterly or annual data
+# and stays on the 30-minute company-page cache.
+@st.fragment(run_every=5)
+def metric_strip(d):
+    quotes, stamp, quote_err = load_quotes()
 
-st.markdown(
-    '<div class="metrics">'
-    + metric("LTP (Tk)", num(data.get("ltp"), "{:,.1f}"), change_sub, sub_color=change_color)
-    + metric("EPS (Tk)", num(data.get("eps")), f"FY{data.get('financial_year') or '—'} basic")
-    + metric("NAV (Tk)", num(data.get("nav")), "per share")
-    + metric("P/E Ratio", num(data.get("pe_ratio")), "current, basic EPS")
-    + metric(
-        "Div. Yield",
-        num(data.get("dividend_yield"), "{:,.2f}%"),
-        f"cash, FY{data.get('financial_year') or '—'}",
-        accent=data.get("dividend_yield") is not None,
+    live_price = quotes.get(d["symbol"])
+    price = live_price if live_price is not None else d.get("ltp")
+
+    previous = d.get("yesterday_close")
+    if price is not None and previous:
+        change_pct = (price - previous) / previous * 100.0
+    else:
+        change_pct = d.get("change_pct")
+
+    if change_pct is None:
+        change_sub, change_color = "no change data", None
+    else:
+        change_sub = f"{change_pct:+.2f}% today"
+        change_color = (
+            theme.ACCENT if change_pct > 0 else (theme.FAIL if change_pct < 0 else None)
+        )
+
+    if live_price is not None:
+        # DSE's own feed stamp is a 12-hour clock served inconsistently across
+        # its cache nodes, so show when we polled instead.
+        change_sub += f" · {datetime.now(BST).strftime('%H:%M:%S')}"
+    if quote_err or live_price is None:
+        # Bonds and untraded scrips are absent from the feed; say so rather than
+        # showing a stale price as though it were live.
+        change_sub += " · page value"
+
+    financial_year = d.get("financial_year") or "—"
+    st.markdown(
+        '<div class="metrics">'
+        + metric("LTP (Tk)", num(price, "{:,.1f}"), change_sub, sub_color=change_color)
+        + metric("EPS (Tk)", num(d.get("eps")), f"FY{financial_year} basic")
+        + metric("NAV (Tk)", num(d.get("nav")), "per share")
+        + metric("P/E Ratio", num(d.get("pe_ratio")), "current, basic EPS")
+        + metric(
+            "Div. Yield",
+            num(d.get("dividend_yield"), "{:,.2f}%"),
+            f"cash, FY{financial_year}",
+            accent=d.get("dividend_yield") is not None,
+        )
+        + "</div>",
+        unsafe_allow_html=True,
     )
-    + "</div>",
-    unsafe_allow_html=True,
-)
+
+
+metric_strip(data)
 
 # -----------------------------------------------------------------------------
 # TABS
