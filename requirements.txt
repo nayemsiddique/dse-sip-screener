@@ -1,0 +1,4 @@
+streamlit==1.64.0
+requests==2.32.5
+beautifulsoup4==4.14.3
+certifi==2026.1.4
