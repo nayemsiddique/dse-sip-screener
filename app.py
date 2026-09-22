@@ -215,8 +215,26 @@ st.markdown(
 st.markdown('<div class="topbar-rule"></div>', unsafe_allow_html=True)
 
 if err:
+    # The company page is only one of this app's sources. Losing it should not
+    # blank the page: the price chart is drawn from a separate feed and stays
+    # useful, so show the failure as a notice and still render the chart.
     tally_slot.markdown("", unsafe_allow_html=True)
-    st.error(err)
+    st.markdown(
+        f'<h1 class="co-name">{esc(code)}</h1>'
+        f'<div class="notice" style="margin-top:14px"><span>&#9651;</span>'
+        f"<p>{esc(err)}</p></div>",
+        unsafe_allow_html=True,
+    )
+    bars, history_source, history_err = load_history(code)
+    if history_err:
+        st.markdown(
+            f'<div class="notice"><span>&#9651;</span><p>{esc(history_err)}</p></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        components.html(
+            pricechart.render(code, bars, history_source), height=pricechart.HEIGHT
+        )
     st.stop()
 
 verdict = dse.evaluate(data)

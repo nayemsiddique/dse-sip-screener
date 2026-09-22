@@ -32,11 +32,13 @@ streamlit run app.py
 ## Live prices
 
 The price tile refreshes itself every 5 seconds via `st.fragment(run_every=5)`.
-It reads `datafile/quotes_script.php` — a ~6 KB plain-text feed of every
-instrument's last trade price, served in about 0.1s — rather than re-fetching
-the ~330 KB company page. The 5-second `st.cache_data` on that fetch is shared
-across viewers, so the app makes one small request per 5s regardless of how many
-people have it open.
+It reads `datafile/quotes.txt` — a ~6 KB plain-text feed of every instrument's
+last trade price, served in about 0.04s — rather than re-fetching the ~330 KB
+company page. Note the URL: `datafile/quotes_script.php` only 302-redirects to
+that file, so asking for it by name halves the round trips, which matters at one
+poll per 5 seconds. The 5-second `st.cache_data` on that fetch is shared across
+viewers, so the app makes one small request per 5s regardless of how many people
+have it open.
 
 Everything else on the page is quarterly or annual data and stays on the
 30-minute company-page cache. Treasury bonds and untraded scrips are absent
@@ -118,6 +120,23 @@ Which range buttons appear depends on what the source actually returned — ever
 preset the data covers, plus the first one that overruns it, so there is always
 a button that shows the whole series. On the DSE fallback that means the buttons
 stop at 2Y.
+
+## When dsebd.org does not answer
+
+It often does not. A single connect timeout used to surface as a full-page
+`Scraping Error: HTTPSConnectionPool(...) ConnectTimeoutError` and `st.stop()`,
+which blanked a page whose chart would have rendered fine.
+
+`dse.session()` is now the one HTTP session every scraper shares: `urllib3`
+`Retry(total=3, connect=3, backoff_factor=0.6)`, connection pooling so a repeat
+call costs no fresh TCP and TLS handshake, and the DSE CA bundle. Timeouts are
+`(connect, read)` tuples with a short connect, because a dead handshake is
+exactly what is being retried — three attempts at 8s beat one at 20s.
+
+If all three attempts fail, `fetch_company` says so in one sentence instead of
+quoting urllib3, and `app.py` degrades rather than stopping: the failure appears
+as a notice and the price chart is still drawn, since it comes from a different
+source entirely.
 
 ## Two things worth knowing
 

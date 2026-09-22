@@ -98,9 +98,7 @@ def fetch_cashflow(symbol, days=400):
     url = NEWS_URL.format(start=start.isoformat(), end=end.isoformat(), symbol=symbol)
 
     try:
-        response = requests.get(
-            url, headers=dse.HEADERS, timeout=45, verify=dse.ca_bundle()
-        )
+        response = dse.session().get(url, timeout=dse.NEWS_TIMEOUT)
         response.raise_for_status()
     except Exception as e:
         return None, f"Could not reach the DSE news archive: {e}"

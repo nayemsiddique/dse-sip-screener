@@ -21,7 +21,8 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 from bs4 import BeautifulSoup
 
-from dse import HEADERS, ca_bundle
+import dse
+from dse import HEADERS
 
 # ---------------------------------------------------------------------------
 # amarstock
@@ -45,13 +46,11 @@ def _amar_session_headers(symbol):
 
 def _amar_data_path(symbol):
     """Re-reads the hashed data route out of amarstock's own script bundle."""
-    page = requests.get(
-        AMAR_PAGE.format(symbol=symbol), headers=HEADERS, timeout=20
-    ).text
+    page = dse.session().get(AMAR_PAGE.format(symbol=symbol), timeout=(8, 20)).text
     bundle = re.search(r'src="([^"]*bundles/js/common\?v=[^"]+)"', page)
     if not bundle:
         raise ValueError("amarstock page carries no common bundle")
-    script = requests.get(bundle.group(1), headers=HEADERS, timeout=20).text
+    script = dse.session().get(bundle.group(1), timeout=(8, 20)).text
     route = re.search(r'qbf:"([^"]+)"', script)
     if not route:
         raise ValueError("amarstock bundle carries no chart data route")
@@ -60,7 +59,9 @@ def _amar_data_path(symbol):
 
 def _amar_fetch(symbol, path):
     url = f"{AMAR_BASE}/{path}/?scrip={symbol}&cycle=Day1&dtFrom={AMAR_FROM}"
-    response = requests.get(url, headers=_amar_session_headers(symbol), timeout=30)
+    response = dse.session().get(
+        url, headers=_amar_session_headers(symbol), timeout=(8, 30)
+    )
     response.raise_for_status()
     return response.json()
 
@@ -139,11 +140,9 @@ def _archive_table(soup):
 def _from_dse(symbol, today=None):
     end = today or date.today()
     start = end - timedelta(days=MAX_DAYS)
-    response = requests.get(
+    response = dse.session().get(
         ARCHIVE_URL.format(start=start.isoformat(), end=end.isoformat(), symbol=symbol),
-        headers=HEADERS,
-        timeout=30,
-        verify=ca_bundle(),
+        timeout=(8, 30),
     )
     response.raise_for_status()
 

@@ -12,13 +12,17 @@ import tempfile
 import certifi
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE = "https://www.dsebd.org"
 COMPANY_URL = BASE + "/displayCompany.php?name={symbol}"
 LISTING_URL = BASE + "/company_listing.php"
-# Plain-text feed of every instrument's last trade price: ~6 KB and ~0.1s,
+# Plain-text feed of every instrument's last trade price: ~6 KB and ~0.04s,
 # against ~330 KB for a company page. This is what intraday polling hits.
-QUOTES_URL = BASE + "/datafile/quotes_script.php"
+# quotes_script.php only 302-redirects here, so asking for the file directly
+# halves the round trips — the polling fragment runs every 5 seconds.
+QUOTES_URL = BASE + "/datafile/quotes.txt"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -63,6 +67,48 @@ def ca_bundle():
     bundle.close()
     _ca_bundle_path = bundle.name
     return _ca_bundle_path
+
+
+# -----------------------------------------------------------------------------
+# HTTP SESSION
+# -----------------------------------------------------------------------------
+# dsebd.org drops connections often enough that a single attempt is not a fair
+# test of whether it is up: a blip surfaced as a full-page "Scraping Error" with
+# ConnectTimeoutError. Retries with backoff absorb that, and the pooled session
+# also saves a TCP and TLS handshake per call.
+_session = None
+
+# Timeouts are (connect, read). Connect is kept short because a dead handshake
+# is the failure being retried; three attempts at 8s beat one at 20s.
+COMPANY_TIMEOUT = (8, 25)
+LISTING_TIMEOUT = (8, 25)
+QUOTES_TIMEOUT = (5, 10)
+NEWS_TIMEOUT = (8, 45)
+
+
+def session():
+    """Shared session: retries, connection pooling, and the DSE CA bundle."""
+    global _session
+    if _session is not None:
+        return _session
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=2,
+        backoff_factor=0.6,          # sleeps 0s, 1.2s, 2.4s between attempts
+        status_forcelist=(500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
+    _session = requests.Session()
+    _session.mount("https://", adapter)
+    _session.mount("http://", adapter)
+    _session.headers.update(HEADERS)
+    # certifi plus the intermediate DSE omits; a superset of certifi, so it is
+    # equally valid for the non-DSE hosts that share this session.
+    _session.verify = ca_bundle()
+    return _session
 
 
 # -----------------------------------------------------------------------------
@@ -183,9 +229,7 @@ def fetch_symbols():
     price and a percentage in their text, so those are filtered out.
     """
     try:
-        response = requests.get(
-            LISTING_URL, headers=HEADERS, timeout=20, verify=ca_bundle()
-        )
+        response = session().get(LISTING_URL, timeout=LISTING_TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, "html.parser")
         scope = soup.find(id="section-to-print") or soup
@@ -219,9 +263,7 @@ def fetch_quotes():
     Instruments that have not traded come through as 0.0 and are dropped.
     """
     try:
-        response = requests.get(
-            QUOTES_URL, headers=HEADERS, timeout=10, verify=ca_bundle()
-        )
+        response = session().get(QUOTES_URL, timeout=QUOTES_TIMEOUT)
         response.raise_for_status()
     except Exception as e:
         return {}, None, f"Quote feed unavailable: {e}"
@@ -248,11 +290,8 @@ def fetch_company(symbol):
     symbol = symbol.strip().upper()
 
     try:
-        response = requests.get(
-            COMPANY_URL.format(symbol=symbol),
-            headers=HEADERS,
-            timeout=20,
-            verify=ca_bundle(),
+        response = session().get(
+            COMPANY_URL.format(symbol=symbol), timeout=COMPANY_TIMEOUT
         )
         if response.status_code != 200:
             return None, f"Failed to connect to DSE (Status Code: {response.status_code})"
@@ -366,6 +405,13 @@ def fetch_company(symbol):
             "TLS verification failed for dsebd.org. The site serves an incomplete "
             "certificate chain; make sure certs_dsebd_intermediate.pem sits next "
             f"to dse.py. Details: {e}"
+        )
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        # Already retried three times by the session, so say so plainly rather
+        # than surfacing a urllib3 traceback the reader cannot act on.
+        return None, (
+            f"dsebd.org did not answer for {symbol} after 3 attempts. The site "
+            "drops connections regularly; this usually clears on its own."
         )
     except Exception as e:
         return None, f"Scraping Error: {e}"
