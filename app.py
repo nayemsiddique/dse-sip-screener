@@ -37,25 +37,58 @@ PILL_COLORS = {
 # -----------------------------------------------------------------------------
 # CACHED DATA
 # -----------------------------------------------------------------------------
+# Each loader is a thin wrapper over a cached fetch. The scrapers raise
+# dse.Unreachable rather than returning a network failure, and Streamlit caches
+# return values but not exceptions, so a blip is retried on the next run instead
+# of being served from cache until the TTL expires. That is what made one
+# symbol look permanently broken while every other symbol worked.
 @st.cache_data(ttl=43200)  # The listed-instrument set changes rarely; cache 12h
-def load_symbols():
+def _fetch_symbols():
     symbols, err = dse.fetch_symbols()
     return symbols, err, datetime.now(BST).strftime("%H:%M")
 
 
+def load_symbols():
+    try:
+        return _fetch_symbols()
+    except dse.Unreachable as e:
+        return [], str(e), datetime.now(BST).strftime("%H:%M")
+
+
 @st.cache_data(ttl=1800)  # Prices move intraday; cache 30 min
-def load_company(symbol):
+def _fetch_company(symbol):
     return dse.fetch_company(symbol)
 
 
+def load_company(symbol):
+    try:
+        return _fetch_company(symbol)
+    except dse.Unreachable as e:
+        return None, str(e)
+
+
 @st.cache_data(ttl=21600)  # Quarterly disclosures change a few times a year
-def load_cashflow(symbol):
+def _fetch_cashflow(symbol):
     return dse_news.fetch_cashflow(symbol)
 
 
+def load_cashflow(symbol):
+    try:
+        return _fetch_cashflow(symbol)
+    except dse.Unreachable as e:
+        return None, str(e)
+
+
 @st.cache_data(ttl=21600)  # Day-end bars are published once, after the close
-def load_history(symbol):
+def _fetch_history(symbol):
     return dse_history.fetch_history(symbol)
+
+
+def load_history(symbol):
+    try:
+        return _fetch_history(symbol)
+    except dse.Unreachable as e:
+        return [], None, str(e)
 
 
 @st.cache_data(ttl=5, show_spinner=False)  # Polled live; see the fragment below
@@ -225,6 +258,8 @@ if err:
         f"<p>{esc(err)}</p></div>",
         unsafe_allow_html=True,
     )
+    if st.button("Try again", type="primary"):
+        st.rerun()
     bars, history_source, history_err = load_history(code)
     if history_err:
         st.markdown(

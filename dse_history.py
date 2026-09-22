@@ -192,4 +192,5 @@ def fetch_history(symbol):
             return source(symbol), label, None
         except Exception as e:
             problems.append(f"{label.split(' ·')[0]}: {e}")
-    return [], None, "Price history unavailable — " + "; ".join(problems)
+    # Both sources down is a network problem, not an answer worth caching.
+    raise dse.Unreachable("Price history unavailable — " + "; ".join(problems))

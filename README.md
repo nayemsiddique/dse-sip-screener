@@ -133,10 +133,21 @@ call costs no fresh TCP and TLS handshake, and the DSE CA bundle. Timeouts are
 `(connect, read)` tuples with a short connect, because a dead handshake is
 exactly what is being retried — three attempts at 8s beat one at 20s.
 
-If all three attempts fail, `fetch_company` says so in one sentence instead of
-quoting urllib3, and `app.py` degrades rather than stopping: the failure appears
-as a notice and the price chart is still drawn, since it comes from a different
-source entirely.
+If all three attempts fail, the scrapers **raise** `dse.Unreachable` rather than
+returning an error string. That matters because of caching: `st.cache_data`
+stores return values but not exceptions, so a returned error would be served
+from cache for the whole TTL — half an hour for a company page, six hours for
+history, twelve for the code list. One blip left a single symbol looking
+permanently broken while every other symbol worked, because only that symbol's
+cache entry held the failure. Raising means the next run retries.
+
+Each loader in `app.py` is therefore a thin wrapper over a cached fetch: the
+cached function is free to raise, and the wrapper turns `Unreachable` back into
+a message for the UI.
+
+When it does fail, `app.py` degrades rather than stopping. The failure appears
+as a notice with a **Try again** button, and the price chart is still drawn,
+since it comes from a different source entirely.
 
 ## Two things worth knowing
 

@@ -100,6 +100,8 @@ def fetch_cashflow(symbol, days=400):
     try:
         response = dse.session().get(url, timeout=dse.NEWS_TIMEOUT)
         response.raise_for_status()
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        raise dse.Unreachable("dsebd.org did not answer with the news archive.")
     except Exception as e:
         return None, f"Could not reach the DSE news archive: {e}"
 
