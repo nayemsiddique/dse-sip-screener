@@ -40,6 +40,13 @@ poll per 5 seconds. The 5-second `st.cache_data` on that fetch is shared across
 viewers, so the app makes one small request per 5s regardless of how many people
 have it open.
 
+Streamlit dims an element to roughly 0.3 opacity while the script that produced
+it is re-running, as a cue that what you are looking at is out of date. At one
+rerun per 5 seconds that read as the metric strip blurring in and out on a loop,
+so `theme.py` holds `[data-stale="true"]` at full opacity and hides the
+top-right running spinner. The tile prints its own poll time, which is a better
+cue than a fade.
+
 Everything else on the page is quarterly or annual data and stays on the
 30-minute company-page cache. Treasury bonds and untraded scrips are absent
 from the quote feed; those fall back to the company-page price and are labelled

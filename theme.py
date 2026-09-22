@@ -108,6 +108,21 @@ html, body, [data-testid="stAppViewContainer"] {
 [data-testid="stMainMenu"] { display: none; }
 footer { display: none; }
 
+/* Streamlit fades an element to ~0.3 opacity while the script that produced it
+   is re-running, so you can see that what is on screen is out of date. The
+   price tile re-runs every 5 seconds through st.fragment, which turned that
+   cue into the whole metric strip blurring in and out on a loop. The numbers
+   are one poll old at worst, and the tile prints its own timestamp, so the
+   fade costs more than it tells anyone. */
+[data-testid="stElementContainer"][data-stale="true"],
+[data-stale="true"] {
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+/* Same reason: the top-right "Running..." spinner would blink every 5s. */
+[data-testid="stStatusWidget"] { display: none; }
+
 button[data-testid="stExpandSidebarButton"] {
   pointer-events: auto;
   position: fixed;
