@@ -102,6 +102,8 @@ def fetch_cashflow(symbol, days=400):
         response.raise_for_status()
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         raise dse.Unreachable("dsebd.org did not answer with the news archive.")
+    except requests.exceptions.HTTPError as e:
+        raise dse.Unreachable(f"dsebd.org returned an error for the news archive: {e}")
     except Exception as e:
         return None, f"Could not reach the DSE news archive: {e}"
 

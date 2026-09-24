@@ -50,13 +50,15 @@ DEFAULT_CODE = "SQURPHARMA"
 
 
 class Unreachable(RuntimeError):
-    """dsebd.org did not answer after the session's retries.
+    """dsebd.org did not answer, or answered with an HTTP error status.
 
     Raised rather than returned so `st.cache_data` never stores it: Streamlit
     caches return values, not exceptions. A returned error would be frozen in
     for the whole TTL — half an hour for a company page, twelve hours for the
     code list — which turned one blip into a symbol that looked permanently
-    broken while every other symbol worked.
+    broken while every other symbol worked. An error status gets the same
+    treatment: when the site moved and every page 404'd, that 404 was cached
+    as the answer for twelve hours and outlived the fix that repointed BASE.
     """
 
 _ca_bundle_path = None
@@ -265,6 +267,8 @@ def fetch_symbols():
         return [], "DSE returned no trading codes."
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         raise Unreachable("dsebd.org did not answer with the trading-code list.")
+    except requests.exceptions.HTTPError as e:
+        raise Unreachable(f"dsebd.org returned an error for the trading-code list: {e}")
     except Exception as e:
         return [], f"Could not load the trading-code list: {e}"
 
@@ -310,8 +314,9 @@ def fetch_company(symbol):
         response = session().get(
             COMPANY_URL.format(symbol=symbol), timeout=COMPANY_TIMEOUT
         )
-        if response.status_code != 200:
-            return None, f"Failed to connect to DSE (Status Code: {response.status_code})"
+        # An unknown code is still a 200 without the company heading (handled
+        # below), so an error status is the site's fault, not the code's.
+        response.raise_for_status()
 
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -429,6 +434,11 @@ def fetch_company(symbol):
         raise Unreachable(
             f"dsebd.org did not answer for {symbol} after 3 attempts. The site "
             "drops connections regularly; this usually clears on its own."
+        )
+    except requests.exceptions.HTTPError as e:
+        raise Unreachable(
+            f"dsebd.org returned HTTP {e.response.status_code} for {symbol}'s "
+            "company page."
         )
     except Exception as e:
         return None, f"Scraping Error: {e}"
