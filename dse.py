@@ -15,7 +15,11 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-BASE = "https://www.dsebd.org"
+# www.dsebd.org was rebuilt as a Next.js site and every .php page below now
+# 404s there. The previous site still runs at old.dsebd.org, unchanged, so the
+# parsers here keep working against it. The new site's robots.txt disallows
+# all automated access, which is why this does not scrape www.
+BASE = "https://old.dsebd.org"
 COMPANY_URL = BASE + "/displayCompany.php?name={symbol}"
 LISTING_URL = BASE + "/company_listing.php"
 # Plain-text feed of every instrument's last trade price: ~6 KB and ~0.04s,

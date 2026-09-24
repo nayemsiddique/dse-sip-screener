@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup
 import dse
 
 NEWS_URL = (
-    "https://www.dsebd.org/old_news.php"
+    dse.BASE + "/old_news.php"
     "?startDate={start}&endDate={end}&criteria=4&archive=news&inst={symbol}"
 )
 

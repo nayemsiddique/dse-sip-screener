@@ -62,7 +62,7 @@ def main():
         return 0
 
     session = requests.Session()
-    session.headers.update({**dse.HEADERS, "Referer": "https://www.dsebd.org/"})
+    session.headers.update({**dse.HEADERS, "Referer": dse.BASE + "/"})
     done = [0]
 
     def work(symbol):

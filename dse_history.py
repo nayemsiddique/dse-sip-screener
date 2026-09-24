@@ -107,7 +107,7 @@ def _from_amarstock(symbol):
 # dsebd.org day-end archive (fallback)
 # ---------------------------------------------------------------------------
 ARCHIVE_URL = (
-    "https://www.dsebd.org/day_end_archive.php"
+    dse.BASE + "/day_end_archive.php"
     "?startDate={start}&endDate={end}&inst={symbol}&archive=data"
 )
 
