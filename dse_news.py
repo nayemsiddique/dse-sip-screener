@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 import dse
+import dse_backup
 
 NEWS_URL = (
     dse.BASE + "/old_news.php"
@@ -86,6 +87,17 @@ def _parse_items(html):
     return items
 
 
+def _items_from_old(url):
+    try:
+        response = dse.session().get(url, timeout=dse.NEWS_TIMEOUT)
+        response.raise_for_status()
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        raise dse.Unreachable("dsebd.org did not answer with the news archive.")
+    except requests.exceptions.HTTPError as e:
+        raise dse.Unreachable(f"dsebd.org returned an error for the news archive: {e}")
+    return _parse_items(response.text)
+
+
 def fetch_cashflow(symbol, days=400):
     """Latest disclosed NOCFPS for `symbol`, with the EPS of the same period.
 
@@ -98,17 +110,17 @@ def fetch_cashflow(symbol, days=400):
     url = NEWS_URL.format(start=start.isoformat(), end=end.isoformat(), symbol=symbol)
 
     try:
-        response = dse.session().get(url, timeout=dse.NEWS_TIMEOUT)
-        response.raise_for_status()
-    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        raise dse.Unreachable("dsebd.org did not answer with the news archive.")
-    except requests.exceptions.HTTPError as e:
-        raise dse.Unreachable(f"dsebd.org returned an error for the news archive: {e}")
+        items = _items_from_old(url)
+    except dse.Unreachable as old_error:
+        try:
+            items, url = dse_backup.fetch_news(symbol, start, end)
+        except dse.Unreachable as new_error:
+            raise dse.Unreachable(f"{old_error} Backup (www.dsebd.org): {new_error}")
     except Exception as e:
         return None, f"Could not reach the DSE news archive: {e}"
 
     candidates = []
-    for item in _parse_items(response.text):
+    for item in items:
         if item["code"].strip().upper() != symbol:
             continue
         match = NOCFPS_RE.search(item["news"])

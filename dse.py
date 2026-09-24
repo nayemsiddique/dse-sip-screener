@@ -8,6 +8,7 @@ import json
 import os
 import re
 import tempfile
+import time
 
 import certifi
 import requests
@@ -18,7 +19,8 @@ from urllib3.util.retry import Retry
 # www.dsebd.org was rebuilt as a Next.js site and every .php page below now
 # 404s there. The previous site still runs at old.dsebd.org, unchanged, so the
 # parsers here keep working against it. The new site's robots.txt disallows
-# all automated access, which is why this does not scrape www.
+# all automated access, so it is only read as a backup (dse_backup.py) when
+# this one is unreachable.
 BASE = "https://old.dsebd.org"
 COMPANY_URL = BASE + "/displayCompany.php?name={symbol}"
 LISTING_URL = BASE + "/company_listing.php"
@@ -238,7 +240,7 @@ def remember_name(symbol, name):
 # -----------------------------------------------------------------------------
 # SCRAPERS
 # -----------------------------------------------------------------------------
-def fetch_symbols():
+def _symbols_from_old():
     """Every trading code listed on dsebd.org, sorted.
 
     company_listing.php links each instrument as displayCompany.php?name=CODE.
@@ -277,7 +279,7 @@ QUOTE_LINE = re.compile(r"^\s*([A-Z0-9()\-.]+)\s+([\d,]+\.?\d*)\s*$")
 QUOTE_STAMP = re.compile(r"Date:\s*([\d-]+)\s+Time:\s*([\d:]+)")
 
 
-def fetch_quotes():
+def _quotes_from_old():
     """Last trade price for every instrument, from DSE's text quote feed.
 
     Returns (prices, stamp, error). `stamp` is DSE's own "date time" header.
@@ -306,7 +308,7 @@ def fetch_quotes():
     return prices, stamp_text, None
 
 
-def fetch_company(symbol):
+def _company_from_old(symbol):
     """Scrapes one company page into a flat dict of figures."""
     symbol = symbol.strip().upper()
 
@@ -442,6 +444,55 @@ def fetch_company(symbol):
         )
     except Exception as e:
         return None, f"Scraping Error: {e}"
+
+
+# -----------------------------------------------------------------------------
+# PUBLIC FETCHERS: old site first, the new site as backup
+# -----------------------------------------------------------------------------
+# Only Unreachable (no answer, or an error status) falls through to the backup;
+# an answer such as "trading code not found" is final. dse_backup is imported
+# lazily because it imports this module.
+def _with_backup(primary, backup_name, *args):
+    try:
+        return primary(*args)
+    except Unreachable as old_error:
+        import dse_backup
+
+        try:
+            return getattr(dse_backup, backup_name)(*args)
+        except Unreachable as new_error:
+            raise Unreachable(f"{old_error} Backup (www.dsebd.org): {new_error}")
+
+
+def fetch_symbols():
+    return _with_backup(_symbols_from_old, "fetch_symbols")
+
+
+def fetch_company(symbol):
+    return _with_backup(_company_from_old, "fetch_company", symbol)
+
+
+# A dead old site costs ~3.6s of retries per request, and the price tile polls
+# every 5 seconds, so after one failure the old feed is skipped for this long.
+OLD_QUOTES_RETRY_AFTER = 60
+_old_quotes_down_until = 0.0
+
+
+def fetch_quotes():
+    """The old feed reports failure as an error rather than raising, since the
+    price tile polls it every 5 seconds and must never stop rendering."""
+    global _old_quotes_down_until
+    import dse_backup
+
+    if time.monotonic() < _old_quotes_down_until:
+        return dse_backup.fetch_quotes()
+
+    prices, stamp, error = _quotes_from_old()
+    if not error:
+        return prices, stamp, None
+    _old_quotes_down_until = time.monotonic() + OLD_QUOTES_RETRY_AFTER
+    backup = dse_backup.fetch_quotes()
+    return backup if not backup[2] else (prices, stamp, error)
 
 
 # -----------------------------------------------------------------------------

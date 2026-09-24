@@ -1,6 +1,6 @@
 """Daily OHLCV history for one trading code.
 
-Two sources, in order:
+Three sources, in order:
 
 * **amarstock.com** — the JSON feed behind its own price chart. It reaches back
   to 2010 and the closes are split-adjusted, which is what makes a ten-year view
@@ -9,6 +9,8 @@ Two sources, in order:
   DSE caps that archive at two years (asking for 2021 still returns nothing
   before today minus ~730 days) and its prices are unadjusted, so the chart
   quietly shortens to whatever the fallback can cover.
+* **www.dsebd.org's day-end archive API** — the redesigned site's copy of the
+  same archive, used only when old.dsebd.org is unreachable too.
 
 Kept free of Streamlit so it can be exercised headless; app.py wraps
 `fetch_history` in Streamlit's cache.
@@ -22,6 +24,7 @@ import requests
 from bs4 import BeautifulSoup
 
 import dse
+import dse_backup
 from dse import HEADERS
 
 # ---------------------------------------------------------------------------
@@ -176,6 +179,7 @@ def _from_dse(symbol, today=None):
 SOURCES = [
     ("amarstock · split-adjusted", _from_amarstock),
     ("dsebd.org day-end · last 2 years", _from_dse),
+    ("www.dsebd.org day-end · last 2 years", lambda symbol: dse_backup.fetch_history(symbol)),
 ]
 
 
@@ -192,5 +196,5 @@ def fetch_history(symbol):
             return source(symbol), label, None
         except Exception as e:
             problems.append(f"{label.split(' ·')[0]}: {e}")
-    # Both sources down is a network problem, not an answer worth caching.
+    # Every source down is a network problem, not an answer worth caching.
     raise dse.Unreachable("Price history unavailable — " + "; ".join(problems))
